@@ -1,0 +1,17 @@
+[Unit]
+Description=V2Ray Smart Router & Multi-User Manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/v2ray-router
+EnvironmentFile=/opt/v2ray-router/.env
+ExecStart=/opt/v2ray-router/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SimorghRouter — Smart Xray Gateway</title>
+  <link rel="icon" type="image/jpeg" href="/static/logo.jpg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased" x-data="app()" x-init="init()">
+
+  <!-- Toast Notification -->
+  <div x-show="toast.show" x-cloak x-transition
+       class="fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border text-sm font-medium"
+       :class="toast.type === 'error' ? 'bg-red-950/95 border-red-700 text-red-200' : 'bg-emerald-950/95 border-emerald-700 text-emerald-200'">
+    <span x-text="toast.message"></span>
+  </div>
+
+  <!-- Login Screen -->
+  <div x-show="!token" x-cloak class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+      <div class="text-center mb-6">
+        <img src="/static/logo.jpg" alt="SimorghRouter Logo" class="w-20 h-20 mx-auto rounded-2xl shadow-lg border border-slate-700 mb-3 object-cover" />
+        <h1 class="text-2xl font-bold text-white">SimorghRouter</h1>
+        <p class="text-slate-400 text-sm mt-1">Smart Xray Auto-Router &amp; Multi-User Gateway</p>
+      </div>
+      <form @submit.prevent="login()" class="space-y-4">
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Username</label>
+          <input type="text" x-model="loginForm.username" required
+                 class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Password</label>
+          <input type="password" x-model="loginForm.password" required
+                 class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <button type="submit" :disabled="loading"
+                class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium text-white transition">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Dashboard -->
+  <div x-show="token" x-cloak class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-800">
+      <div class="flex items-center gap-3.5">
+        <img src="/static/logo.jpg" alt="SimorghRouter" class="w-11 h-11 rounded-xl border border-slate-700 object-cover shadow" />
+        <div>
+          <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+            <span>SimorghRouter</span>
+          <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                :class="overview.xray_main_running ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-700' : 'bg-red-900/60 text-red-300 border border-red-700'"
+                x-text="overview.xray_main_running ? 'Core Online' : 'Core Offline'"></span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">
+          Host: <span class="text-slate-200 font-mono" x-text="overview.public_host || 'Not set'"></span>
+          &middot; Watchdog: <span x-text="formatTime(overview.last_watchdog_at)"></span>
+          &middot; Last Test: <span x-text="formatTime(overview.last_speedtest_at)"></span>
+        </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="triggerSpeedTest(false)" :disabled="overview.is_testing_now"
+                class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium text-white">
+          <span x-text="overview.is_testing_now ? 'Testing...' : 'Run Speed Test'"></span>
+        </button>
+        <button @click="logout()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm text-slate-300">
+          Logout
+        </button>
+      </div>
+    </header>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 my-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Active Outbound</div>
+        <div class="text-lg font-semibold text-white mt-1 truncate"
+             x-text="overview.active_outbound ? overview.active_outbound.name : 'None'"></div>
+        <div class="text-xs text-emerald-400 mt-1"
+             x-text="overview.active_outbound && overview.active_outbound.latency_ms ? overview.active_outbound.latency_ms + ' ms' : 'No latency data'"></div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Healthy Outbounds</div>
+        <div class="text-2xl font-bold text-white mt-1">
+          <span x-text="overview.alive_outbounds"></span>
+          <span class="text-sm text-slate-500 font-normal">/ <span x-text="overview.total_outbounds"></span></span>
+        </div>
+        <div class="text-xs text-slate-400 mt-1">Interval: <span x-text="overview.speedtest_interval_min"></span> min</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Active Clients</div>
+        <div class="text-2xl font-bold text-white mt-1">
+          <span x-text="overview.active_clients"></span>
+          <span class="text-sm text-slate-500 font-normal">/ <span x-text="overview.total_clients"></span></span>
+        </div>
+        <div class="text-xs text-slate-400 mt-1">gRPC Live Quota Enforcement</div>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Total Client Traffic</div>
+        <div class="text-2xl font-bold text-white mt-1" x-text="formatBytes(overview.total_traffic_bytes)"></div>
+        <div class="text-xs text-slate-400 mt-1">Iran traffic bypassed direct</div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="flex flex-wrap gap-2 border-b border-slate-800 pb-3 mb-6">
+      <template x-for="t in ['outbounds', 'clients', 'routing', 'geo', 'settings']" :key="t">
+        <button @click="tab = t"
+                class="px-4 py-2 rounded-lg text-sm font-medium capitalize transition"
+                :class="tab === t ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white'">
+          <span x-text="t === 'geo' ? 'GeoIP / Geosite' : t"></span>
+        </button>
+      </template>
+    </nav>
+
+    <!-- TAB 1: OUTBOUNDS -->
+    <section x-show="tab === 'outbounds'" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Bulk Import V2Ray Links / Subscription</h2>
+          <div class="space-y-3">
+            <input type="url" x-model="importForm.subscription_url"
+                   placeholder="Optional Subscription URL (https://...)"
+                   class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+            <textarea x-model="importForm.links_text" rows="4"
+                      placeholder="Paste vless://, vmess://, trojan://, or ss:// links (one per line)"
+                      class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm font-mono text-white"></textarea>
+            <div class="flex flex-wrap items-center gap-3">
+              <button @click="importOutbounds()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium">
+                Import Configs
+              </button>
+              <button @click="triggerSpeedTest(true)" :disabled="overview.is_testing_now"
+                      class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm text-slate-200">
+                Test Latency + Speed (Mbps)
+              </button>
+              <button @click="purgeDeadOutbounds()" class="px-4 py-2 bg-red-900/50 hover:bg-red-800/60 border border-red-800 rounded-lg text-sm text-red-200">
+                Purge Dead
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <h2 class="text-base font-semibold text-white mb-3">Speed Test Schedule</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Test Interval (Minutes)</label>
+              <input type="number" min="1" max="1440" x-model.number="settingsForm.speedtest_interval_min"
+                     class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+            </div>
+            <label class="flex items-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" x-model="settingsForm.run_speed_dl_on_schedule" class="rounded bg-slate-950 border-slate-700" />
+              Measure download speed (Mbps) on schedule
+            </label>
+            <button @click="saveSettings()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium text-white">
+              Save Schedule
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
+            <tr>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3">Name</th>
+              <th class="px-4 py-3">Protocol</th>
+              <th class="px-4 py-3">Server</th>
+              <th class="px-4 py-3">Latency</th>
+              <th class="px-4 py-3">Speed</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            <template x-for="o in outbounds" :key="o.id">
+              <tr class="hover:bg-slate-800/30">
+                <td class="px-4 py-3">
+                  <span x-show="o.is_active" class="px-2 py-0.5 text-xs rounded-full bg-indigo-900/70 text-indigo-200 border border-indigo-700">ACTIVE</span>
+                  <span x-show="!o.is_active && o.is_alive" class="px-2 py-0.5 text-xs rounded-full bg-emerald-900/60 text-emerald-300">Alive</span>
+                  <span x-show="!o.is_active && !o.is_alive" class="px-2 py-0.5 text-xs rounded-full bg-red-900/50 text-red-300" :title="o.last_error || ''">Dead</span>
+                </td>
+                <td class="px-4 py-3 font-medium text-white max-w-[220px] truncate" x-text="o.name"></td>
+                <td class="px-4 py-3 uppercase text-xs font-mono text-slate-300" x-text="o.protocol"></td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-400" x-text="o.address + ':' + o.port"></td>
+                <td class="px-4 py-3 font-mono text-xs" x-text="o.latency_ms ? o.latency_ms + ' ms' : '-'"></td>
+                <td class="px-4 py-3 font-mono text-xs" x-text="o.speed_mbps ? o.speed_mbps + ' Mbps' : '-'"></td>
+                <td class="px-4 py-3 text-right space-x-1">
+                  <button x-show="!o.is_active" @click="activateOutbound(o.id)"
+                          class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs text-white">Use</button>
+                  <button @click="toggleOutbound(o.id)"
+                          class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300"
+                          x-text="o.enabled ? 'Disable' : 'Enable'"></button>
+                  <button x-show="!o.is_active" @click="deleteOutbound(o.id)"
+                          class="px-2.5 py-1 bg-red-900/50 hover:bg-red-800 rounded text-xs text-red-200">Del</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 2: CLIENTS -->
+    <section x-show="tab === 'clients'" class="space-y-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-3">Create Client Account</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <input type="text" x-model="clientForm.username" placeholder="Username (e.g. ali_mobile)"
+                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          <input type="number" min="0" step="0.5" x-model.number="clientForm.quota_gb" placeholder="Quota GB (0 = unlimited)"
+                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          <input type="number" min="1" x-model.number="clientForm.expires_in_days" placeholder="Valid Days (optional)"
+                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          <button @click="createClient()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">
+            Create Client
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
+            <tr>
+              <th class="px-4 py-3">Username</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3">Usage / Quota</th>
+              <th class="px-4 py-3">Expires</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            <template x-for="c in clients" :key="c.id">
+              <tr class="hover:bg-slate-800/30">
+                <td class="px-4 py-3 font-medium text-white" x-text="c.username"></td>
+                <td class="px-4 py-3">
+                  <span x-show="c.enabled" class="px-2 py-0.5 text-xs rounded-full bg-emerald-900/60 text-emerald-300">Active</span>
+                  <span x-show="!c.enabled" class="px-2 py-0.5 text-xs rounded-full bg-red-900/50 text-red-300"
+                        x-text="c.revoked_reason || 'Disabled'"></span>
+                </td>
+                <td class="px-4 py-3">
+                  <div class="text-xs font-mono">
+                    <span x-text="formatBytes(c.total_used_bytes)"></span>
+                    / <span x-text="c.quota_bytes > 0 ? formatBytes(c.quota_bytes) : 'Unlimited'"></span>
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-400" x-text="c.expires_at ? formatTime(c.expires_at) : 'Never'"></td>
+                <td class="px-4 py-3 text-right space-x-1">
+                  <button @click="openClientLinks(c.id)" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs text-white">Links / QR</button>
+                  <button @click="resetClientTraffic(c.id)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300">Reset</button>
+                  <button @click="toggleClient(c)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300"
+                          x-text="c.enabled ? 'Disable' : 'Enable'"></button>
+                  <button @click="deleteClient(c.id)" class="px-2.5 py-1 bg-red-900/50 hover:bg-red-800 rounded text-xs text-red-200">Del</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: ROUTING -->
+    <section x-show="tab === 'routing'" class="space-y-6">
+      <div class="bg-emerald-950/30 border border-emerald-800/60 rounded-xl p-4 text-sm text-emerald-200">
+        <strong>Built-in Iran &amp; Local Bypass (Always Active -> Direct):</strong>
+        <span class="font-mono text-xs ml-2">geosite:category-ir, domain:.ir, geoip:ir, geoip:private</span>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <h2 class="text-base font-semibold text-white mb-3">Add Custom Routing Rule</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
+          <select x-model="ruleForm.rule_type" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
+            <option value="domain">Domain / GeoSite</option>
+            <option value="ip">IP CIDR / GeoIP</option>
+          </select>
+          <input type="text" x-model="ruleForm.value" placeholder="e.g. geosite:google or 1.1.1.0/24"
+                 class="sm:col-span-2 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white font-mono" />
+          <select x-model="ruleForm.action" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
+            <option value="proxy">Proxy (Fastest)</option>
+            <option value="direct">Direct (Freedom)</option>
+            <option value="block">Block (Blackhole)</option>
+          </select>
+          <button @click="createRule()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">
+            Add &amp; Apply
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
+            <tr>
+              <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3">Rule Value</th>
+              <th class="px-4 py-3">Action</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            <template x-for="r in rules" :key="r.id">
+              <tr>
+                <td class="px-4 py-3 uppercase text-xs text-slate-400" x-text="r.rule_type"></td>
+                <td class="px-4 py-3 font-mono text-xs text-white" x-text="r.value"></td>
+                <td class="px-4 py-3">
+                  <span class="px-2 py-0.5 rounded text-xs uppercase font-medium"
+                        :class="r.action === 'direct' ? 'bg-emerald-900/60 text-emerald-300' : (r.action === 'block' ? 'bg-red-900/60 text-red-300' : 'bg-indigo-900/60 text-indigo-300')"
+                        x-text="r.action"></span>
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <button @click="deleteRule(r.id)" class="px-2.5 py-1 bg-red-900/50 hover:bg-red-800 rounded text-xs text-red-200">Delete</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 4: GEOIP / GEOSITE -->
+    <section x-show="tab === 'geo'" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <h2 class="text-base font-semibold text-white">GeoIP &amp; Geosite Database Status</h2>
+          <div class="text-sm space-y-2">
+            <div class="flex justify-between">
+              <span class="text-slate-400">geoip.dat:</span>
+              <span class="font-mono" x-text="geo.geoip_exists ? geo.geoip_size_mb + ' MB (' + formatTime(geo.geoip_updated_at) + ')' : 'Missing'"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">geosite.dat:</span>
+              <span class="font-mono" x-text="geo.geosite_exists ? geo.geosite_size_mb + ' MB (' + formatTime(geo.geosite_updated_at) + ')' : 'Missing'"></span>
+            </div>
+          </div>
+          <div class="space-y-2 pt-2">
+            <label class="block text-xs text-slate-400">geoip.dat URL</label>
+            <input type="url" x-model="geo.geoip_url" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white" />
+            <label class="block text-xs text-slate-400">geosite.dat URL</label>
+            <input type="url" x-model="geo.geosite_url" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white" />
+            <label class="flex items-center gap-2 text-sm text-slate-300 pt-1">
+              <input type="checkbox" x-model="geo.weekly_auto_update" />
+              Enable Weekly Automatic Update
+            </label>
+            <button @click="updateGeo()" :disabled="loading"
+                    class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">
+              Update Databases Now
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <h2 class="text-base font-semibold text-white">Upload Custom .dat Files</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Upload custom geoip.dat</label>
+              <input type="file" accept=".dat" @change="uploadGeo($event, 'geoip.dat')"
+                     class="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Upload custom geosite.dat</label>
+              <input type="file" accept=".dat" @change="uploadGeo($event, 'geosite.dat')"
+                     class="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-slate-800 file:text-white" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SETTINGS -->
+    <section x-show="tab === 'settings'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+        <h2 class="text-base font-semibold text-white">Server &amp; Inbound Ports</h2>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Public VPS IP / Domain</label>
+          <input type="text" x-model="settingsForm.public_host" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white font-mono" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">VLESS TCP Port</label>
+            <input type="number" x-model.number="settingsForm.vless_tcp_port" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">VLESS WS Port</label>
+            <input type="number" x-model.number="settingsForm.vless_ws_port" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">VLESS WS Path</label>
+            <input type="text" x-model="settingsForm.vless_ws_path" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Trojan Port</label>
+            <input type="number" x-model.number="settingsForm.trojan_port" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button @click="saveSettings()" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">Save &amp; Apply</button>
+          <button @click="restartXray()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm text-slate-200">Restart Xray</button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+        <h2 class="text-base font-semibold text-white">Change Admin Password</h2>
+        <input type="password" x-model="pwForm.current_password" placeholder="Current password"
+               class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+        <input type="password" x-model="pwForm.new_password" placeholder="New password (min 6 chars)"
+               class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+        <button @click="changePassword()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium text-white">
+          Update Password
+        </button>
+      </div>
+    </section>
+
+    <!-- Client Links & QR Modal -->
+    <div x-show="qrModal.open" x-cloak class="fixed inset-0 z-40 bg-black/70 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-lg font-semibold text-white">Client Config: <span x-text="qrModal.username"></span></h3>
+          <button @click="qrModal.open = false" class="text-slate-400 hover:text-white">&times;</button>
+        </div>
+        <div class="flex gap-2">
+          <button @click="selectQrProto('vless_tcp')" :class="qrModal.proto === 'vless_tcp' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">VLESS TCP</button>
+          <button @click="selectQrProto('vless_ws')" :class="qrModal.proto === 'vless_ws' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">VLESS WS</button>
+          <button @click="selectQrProto('trojan')" :class="qrModal.proto === 'trojan' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">Trojan</button>
+        </div>
+        <div class="flex justify-center bg-white p-3 rounded-xl">
+          <img :src="qrModal.qrUrl" alt="QR Code" class="w-48 h-48" />
+        </div>
+        <div class="flex gap-2">
+          <input type="text" readonly :value="qrModal.links[qrModal.proto] || ''"
+                 class="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-200" />
+          <button @click="copyLink(qrModal.links[qrModal.proto])" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs text-white">Copy</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

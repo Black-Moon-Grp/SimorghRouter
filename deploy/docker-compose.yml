@@ -1,0 +1,24 @@
+services:
+  v2ray-router:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: v2ray-smart-router
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "443:443"
+      - "8443:8443"
+      - "2083:2083"
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-long-random-secret-in-production}
+      - DEFAULT_ADMIN_USER=${DEFAULT_ADMIN_USER:-admin}
+      - DEFAULT_ADMIN_PASS=${DEFAULT_ADMIN_PASS:-admin123}
+      - PUBLIC_HOST=${PUBLIC_HOST:-}
+    volumes:
+      - v2ray_data:/var/lib/v2ray-router
+      - v2ray_assets:/usr/local/share/xray
+
+volumes:
+  v2ray_data:
+  v2ray_assets:

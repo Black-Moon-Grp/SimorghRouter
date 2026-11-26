@@ -58,6 +58,8 @@ function app() {
       trojan_port: 2083,
     },
     pwForm: { current_password: '', new_password: '' },
+    updatingApp: false,
+    updateInfo: { local_commit: '', remote_commit: '', remote_message: '', update_available: false },
     qrModal: { open: false, clientId: null, username: '', proto: 'vless_tcp', links: {}, qrUrl: '' },
 
     init() {
@@ -134,6 +136,7 @@ function app() {
         this.loadClients(),
         this.loadRules(),
         this.loadGeo(),
+        this.checkUpdate(),
       ]);
     },
 
@@ -393,6 +396,24 @@ function app() {
         this.pwForm = { current_password: '', new_password: '' };
         this.notify('Password updated');
       } catch (e) { this.notify(e.message, 'error'); }
+    },
+
+    async checkUpdate() {
+      try {
+        this.updateInfo = await (await this.api('/api/system/update-check')).json();
+      } catch {}
+    },
+
+    async selfUpdate() {
+      this.updatingApp = true;
+      try {
+        const res = await (await this.api('/api/system/self-update', { method: 'POST' })).json();
+        this.notify(`Updated to ${res.commit}! Restarting panel...`);
+        setTimeout(() => { window.location.reload(); }, 5000);
+      } catch (e) {
+        this.notify(e.message, 'error');
+        this.updatingApp = false;
+      }
     },
 
     formatBytes(bytes) {

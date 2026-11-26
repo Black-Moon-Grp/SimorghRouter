@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "[1/6] Installing system dependencies..."
 apt-get update -y
-apt-get install -y python3 python3-venv python3-pip curl unzip ufw ca-certificates
+apt-get install -y python3 python3-venv python3-pip curl unzip ufw ca-certificates git
 
 echo "[2/6] Installing latest Xray-core (Linux x64)..."
 TMP_XRAY="$(mktemp -d)"

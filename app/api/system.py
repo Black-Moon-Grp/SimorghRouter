@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Depends
+import asyncio
+import logging
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +18,9 @@ from app.database import get_db
 from app.models import AdminUser, ClientAccount, OutboundConfig, SystemSetting
 from app.schemas import SystemOverviewResponse, SystemSettingsUpdate
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/system", tags=["system"])
+APP_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 async def _get_setting(db: AsyncSession, key: str, default: str) -> str:
@@ -139,3 +149,93 @@ async def restart_xray(_: AdminUser = Depends(get_current_admin)):
     await xray_manager.start_or_reload_main()
     await xray_manager.restore_active_outbound_on_boot()
     return {"status": "restarted"}
+
+
+@router.get("/update-check")
+async def check_github_update(_: AdminUser = Depends(get_current_admin)):
+    version_file = settings.data_path / "app_version.txt"
+    local_commit = version_file.read_text(encoding="utf-8").strip() if version_file.is_file() else "unknown"
+    remote_commit = None
+    remote_message = None
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                settings.GITHUB_API_COMMIT_URL,
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "SimorghRouter"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                remote_commit = str(data.get("sha", ""))[:7]
+                remote_message = (data.get("commit", {}).get("message", "") or "").splitlines()[0]
+    except Exception as exc:
+        logger.debug("GitHub update check failed: %s", exc)
+
+    return {
+        "local_commit": local_commit,
+        "remote_commit": remote_commit,
+        "remote_message": remote_message,
+        "update_available": bool(remote_commit and remote_commit != local_commit),
+    }
+
+
+async def _delayed_service_restart() -> None:
+    await asyncio.sleep(1.5)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "systemctl", "restart", "v2ray-router.service",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    except Exception:
+        pass
+
+
+@router.post("/self-update")
+async def self_update_from_github(
+    background_tasks: BackgroundTasks,
+    _: AdminUser = Depends(get_current_admin),
+):
+    tmp_dir = Path(tempfile.mkdtemp(prefix="simorgh_upd_"))
+    try:
+        clone_proc = await asyncio.create_subprocess_exec(
+            "git", "clone", "--depth", "1", settings.GITHUB_REPO_URL, str(tmp_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(clone_proc.communicate(), timeout=60.0)
+        if clone_proc.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Git clone failed: {stderr.decode('utf-8', errors='replace')[:240]}",
+            )
+
+        rev_proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(tmp_dir), "rev-parse", "--short", "HEAD",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        rev_out, _ = await rev_proc.communicate()
+        new_commit = rev_out.decode("utf-8", errors="replace").strip() or "latest"
+
+        src_app = tmp_dir / "app"
+        dst_app = APP_ROOT / "app"
+        if not src_app.is_dir():
+            raise HTTPException(status_code=500, detail="Downloaded repository missing app/ directory")
+
+        shutil.copytree(src_app, dst_app, dirs_exist_ok=True)
+        src_req = tmp_dir / "requirements.txt"
+        if src_req.is_file():
+            shutil.copy2(src_req, APP_ROOT / "requirements.txt")
+            pip_proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "-q", "-r", str(APP_ROOT / "requirements.txt"),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(pip_proc.communicate(), timeout=120.0)
+
+        (settings.data_path / "app_version.txt").write_text(new_commit, encoding="utf-8")
+        background_tasks.add_task(_delayed_service_restart)
+        return {"status": "updating", "commit": new_commit}
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)

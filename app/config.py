@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     GEOIP_URL: str = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
     GEOSITE_URL: str = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
 
+    # Self-update from GitHub
+    GITHUB_REPO_URL: str = "https://github.com/Black-Moon-Grp/SimorghRouter.git"
+    GITHUB_API_COMMIT_URL: str = "https://api.github.com/repos/Black-Moon-Grp/SimorghRouter/commits/main"
+
     @property
     def data_path(self) -> Path:
         return Path(self.DATA_DIR)

@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.api import auth, clients, geo, outbounds, routing, system
 from app.config import settings
+from app.core.activity_tracker import activity_tracker
 from app.core.scheduler import router_scheduler
 from app.core.xray_manager import xray_manager
 from app.database import AsyncSessionLocal, init_db
@@ -86,7 +87,9 @@ async def lifespan(app: FastAPI):
         logger.warning("Xray startup warning (check xray binary/config): %s", exc)
 
     await router_scheduler.start()
+    activity_tracker.start()
     yield
+    await activity_tracker.stop()
     router_scheduler.shutdown()
     await xray_manager.shutdown()
 
@@ -96,6 +99,7 @@ app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(outbounds.router)
 app.include_router(clients.router)
+app.include_router(clients.sub_router)
 app.include_router(routing.router)
 app.include_router(geo.router)
 app.include_router(system.router)

@@ -95,6 +95,22 @@ class ClientAccount(Base):
         return (self.upload_bytes or 0) + (self.download_bytes or 0)
 
 
+class ClientActivityLog(Base):
+    __tablename__ = "client_activity_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("client_accounts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    username: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_ip: Mapped[str] = mapped_column(String(64), nullable=False)
+    destination: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    network: Mapped[str] = mapped_column(String(16), nullable=False)  # tcp, udp
+    inbound_tag: Mapped[str] = mapped_column(String(32), nullable=False)
+    outbound_tag: Mapped[str] = mapped_column(String(32), nullable=False)  # proxy, direct, block
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class RoutingRule(Base):
     __tablename__ = "routing_rules"
 

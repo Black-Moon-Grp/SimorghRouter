@@ -113,11 +113,11 @@
 
     <!-- Navigation Tabs -->
     <nav class="flex flex-wrap gap-2 border-b border-slate-800 pb-3 mb-6">
-      <template x-for="t in ['outbounds', 'clients', 'routing', 'geo', 'settings']" :key="t">
-        <button @click="tab = t"
+      <template x-for="t in ['outbounds', 'clients', 'logs', 'routing', 'geo', 'settings']" :key="t">
+        <button @click="tab = t; if(t === 'logs') loadActivity();"
                 class="px-4 py-2 rounded-lg text-sm font-medium capitalize transition"
                 :class="tab === t ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white'">
-          <span x-text="t === 'geo' ? 'GeoIP / Geosite' : t"></span>
+          <span x-text="t === 'geo' ? 'GeoIP / Geosite' : (t === 'logs' ? 'Live Logs & Activity' : t)"></span>
         </button>
       </template>
     </nav>
@@ -213,15 +213,24 @@
     <!-- TAB 2: CLIENTS -->
     <section x-show="tab === 'clients'" class="space-y-6">
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <h2 class="text-base font-semibold text-white mb-3">Create Client Account</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <input type="text" x-model="clientForm.username" placeholder="Username (e.g. ali_mobile)"
-                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
-          <input type="number" min="0" step="0.5" x-model.number="clientForm.quota_gb" placeholder="Quota GB (0 = unlimited)"
-                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
-          <input type="number" min="1" x-model.number="clientForm.expires_in_days" placeholder="Valid Days (optional)"
-                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
-          <button @click="createClient()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">
+        <h2 class="text-base font-semibold text-white mb-4">Create Client Account</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Username</label>
+            <input type="text" x-model="clientForm.username" placeholder="e.g. ali_mobile"
+                   class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Data Quota (GB, 0 = Unlimited)</label>
+            <input type="number" min="0" step="0.5" x-model.number="clientForm.quota_gb" placeholder="0"
+                   class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Validity Period (Days)</label>
+            <input type="number" min="1" x-model.number="clientForm.expires_in_days" placeholder="30 (optional)"
+                   class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+          </div>
+          <button @click="createClient()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white h-[38px]">
             Create Client
           </button>
         </div>
@@ -268,6 +277,122 @@
       </div>
     </section>
 
+    <!-- TAB 2.5: LIVE LOGS & ACTIVITY -->
+    <section x-show="tab === 'logs'" class="space-y-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-base font-semibold text-white">Live User Status &amp; Active Connections</h2>
+            <p class="text-xs text-slate-400">Auto-refreshes every 5 seconds. Online = active traffic in the last 60s.</p>
+          </div>
+          <button @click="loadActivity()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-200">
+            Refresh Now
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3">User</th>
+                <th class="px-4 py-3">Live</th>
+                <th class="px-4 py-3">Account</th>
+                <th class="px-4 py-3">Allowed Quota</th>
+                <th class="px-4 py-3">Remaining</th>
+                <th class="px-4 py-3">Expires</th>
+                <th class="px-4 py-3">Current Destination &amp; Route</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <template x-for="u in liveUsers" :key="u.client_id">
+                <tr class="hover:bg-slate-800/30">
+                  <td class="px-4 py-3 font-medium text-white" x-text="u.username"></td>
+                  <td class="px-4 py-3">
+                    <span x-show="u.is_online" class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-700">
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online
+                    </span>
+                    <span x-show="!u.is_online" class="px-2 py-0.5 text-xs rounded-full bg-slate-800 text-slate-400">Offline</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <span x-show="u.enabled" class="px-2 py-0.5 text-xs rounded-full bg-emerald-900/50 text-emerald-300">Active</span>
+                    <span x-show="!u.enabled" class="px-2 py-0.5 text-xs rounded-full bg-red-900/50 text-red-300" x-text="u.revoked_reason || 'Disabled'"></span>
+                  </td>
+                  <td class="px-4 py-3 font-mono text-xs" x-text="u.quota_bytes > 0 ? formatBytes(u.quota_bytes) : 'Unlimited'"></td>
+                  <td class="px-4 py-3 font-mono text-xs" x-text="u.remaining_bytes !== null ? formatBytes(u.remaining_bytes) : 'Unlimited'"></td>
+                  <td class="px-4 py-3 text-xs text-slate-400" x-text="u.expires_at ? formatTime(u.expires_at) : 'Never'"></td>
+                  <td class="px-4 py-3 text-xs">
+                    <template x-if="u.current_destination">
+                      <div>
+                        <span class="font-mono text-indigo-300" x-text="u.current_destination"></span>
+                        <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase text-[10px]" x-text="u.current_outbound"></span>
+                        <div class="text-[11px] text-slate-500 mt-0.5">
+                          From <span class="font-mono" x-text="u.source_ip"></span> via <span x-text="u.current_inbound"></span>
+                        </div>
+                      </div>
+                    </template>
+                    <span x-show="!u.current_destination" class="text-slate-500">-</span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <h2 class="text-base font-semibold text-white">Visited Sites &amp; Connection History</h2>
+          <div class="flex flex-wrap gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Filter by User</label>
+              <select x-model="logFilter.username" @change="loadActivityLogs()"
+                      class="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white">
+                <option value="">All Users</option>
+                <template x-for="c in clients" :key="c.id">
+                  <option :value="c.username" x-text="c.username"></option>
+                </template>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Search Domain / IP</label>
+              <input type="text" x-model="logFilter.search" @input.debounce.300ms="loadActivityLogs()"
+                     placeholder="e.g. google.com"
+                     class="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white" />
+            </div>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-96 overflow-y-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-950/80 text-slate-400 uppercase sticky top-0">
+              <tr>
+                <th class="px-3 py-2.5">Time</th>
+                <th class="px-3 py-2.5">User</th>
+                <th class="px-3 py-2.5">Client IP</th>
+                <th class="px-3 py-2.5">Destination</th>
+                <th class="px-3 py-2.5">Inbound</th>
+                <th class="px-3 py-2.5">Route</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <template x-for="l in activityLogs" :key="l.id">
+                <tr class="hover:bg-slate-800/30">
+                  <td class="px-3 py-2 text-slate-400 whitespace-nowrap" x-text="formatTime(l.created_at)"></td>
+                  <td class="px-3 py-2 font-medium text-white" x-text="l.username"></td>
+                  <td class="px-3 py-2 font-mono text-slate-400" x-text="l.source_ip"></td>
+                  <td class="px-3 py-2 font-mono text-indigo-300" x-text="l.network + ':' + l.destination"></td>
+                  <td class="px-3 py-2 text-slate-300" x-text="l.inbound_tag"></td>
+                  <td class="px-3 py-2">
+                    <span class="px-1.5 py-0.5 rounded uppercase font-medium"
+                          :class="l.outbound_tag === 'direct' ? 'bg-emerald-900/60 text-emerald-300' : (l.outbound_tag === 'block' ? 'bg-red-900/60 text-red-300' : 'bg-indigo-900/60 text-indigo-300')"
+                          x-text="l.outbound_tag"></span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- TAB 3: ROUTING -->
     <section x-show="tab === 'routing'" class="space-y-6">
       <div class="bg-emerald-950/30 border border-emerald-800/60 rounded-xl p-4 text-sm text-emerald-200">
@@ -276,20 +401,29 @@
       </div>
 
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <h2 class="text-base font-semibold text-white mb-3">Add Custom Routing Rule</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
-          <select x-model="ruleForm.rule_type" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
-            <option value="domain">Domain / GeoSite</option>
-            <option value="ip">IP CIDR / GeoIP</option>
-          </select>
-          <input type="text" x-model="ruleForm.value" placeholder="e.g. geosite:google or 1.1.1.0/24"
-                 class="sm:col-span-2 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white font-mono" />
-          <select x-model="ruleForm.action" class="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
-            <option value="proxy">Proxy (Fastest)</option>
-            <option value="direct">Direct (Freedom)</option>
-            <option value="block">Block (Blackhole)</option>
-          </select>
-          <button @click="createRule()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white">
+        <h2 class="text-base font-semibold text-white mb-4">Add Custom Routing Rule</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Rule Type</label>
+            <select x-model="ruleForm.rule_type" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
+              <option value="domain">Domain / GeoSite</option>
+              <option value="ip">IP CIDR / GeoIP</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Domain, IP CIDR, or Geo Tag</label>
+            <input type="text" x-model="ruleForm.value" placeholder="e.g. geosite:google or 1.1.1.0/24"
+                   class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Action</label>
+            <select x-model="ruleForm.action" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
+              <option value="proxy">Proxy (Fastest)</option>
+              <option value="direct">Direct (Freedom)</option>
+              <option value="block">Block (Blackhole)</option>
+            </select>
+          </div>
+          <button @click="createRule()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-medium text-white h-[38px]">
             Add &amp; Apply
           </button>
         </div>
@@ -425,7 +559,8 @@
           <h3 class="text-lg font-semibold text-white">Client Config: <span x-text="qrModal.username"></span></h3>
           <button @click="qrModal.open = false" class="text-slate-400 hover:text-white">&times;</button>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+          <button @click="selectQrProto('sub')" :class="qrModal.proto === 'sub' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">Subscription URL</button>
           <button @click="selectQrProto('vless_tcp')" :class="qrModal.proto === 'vless_tcp' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">VLESS TCP</button>
           <button @click="selectQrProto('vless_ws')" :class="qrModal.proto === 'vless_ws' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">VLESS WS</button>
           <button @click="selectQrProto('trojan')" :class="qrModal.proto === 'trojan' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'" class="px-3 py-1.5 rounded-lg text-xs">Trojan</button>
@@ -434,9 +569,18 @@
           <img :src="qrModal.qrUrl" alt="QR Code" class="w-48 h-48" />
         </div>
         <div class="flex gap-2">
-          <input type="text" readonly :value="qrModal.links[qrModal.proto] || ''"
+          <input type="text" readonly :value="qrModal.proto === 'sub' ? (qrModal.links.subscription_url || '') : (qrModal.links[qrModal.proto] || '')"
                  class="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-200" />
-          <button @click="copyLink(qrModal.links[qrModal.proto])" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs text-white">Copy</button>
+          <button @click="copyLink(qrModal.proto === 'sub' ? qrModal.links.subscription_url : qrModal.links[qrModal.proto])" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs text-white">Copy</button>
+        </div>
+        <div class="bg-slate-950/70 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 space-y-1.5">
+          <div class="font-semibold text-white">Compatible Client Apps (Import Subscription URL or Scan QR):</div>
+          <div class="flex flex-wrap gap-2">
+            <a href="https://github.com/2dust/v2rayNG/releases" target="_blank" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-indigo-300">Android: v2rayNG</a>
+            <a href="https://github.com/2dust/v2rayN/releases" target="_blank" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-indigo-300">Windows: v2rayN</a>
+            <a href="https://github.com/MatsuriDayo/nekoray/releases" target="_blank" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-indigo-300">Win/Linux: Nekoray</a>
+            <a href="https://apps.apple.com/app/streisand/id6450534064" target="_blank" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-indigo-300">iOS/macOS: Streisand</a>
+          </div>
         </div>
       </div>
     </div>

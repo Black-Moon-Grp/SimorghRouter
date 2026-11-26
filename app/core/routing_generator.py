@@ -126,8 +126,15 @@ def generate_main_xray_config(
         "outboundTag": "proxy",
     })
 
+    access_log_path = (settings.data_path / "xray_access.log").as_posix()
+    error_log_path = (settings.data_path / "xray_error.log").as_posix()
+
     return {
-        "log": {"loglevel": "warning"},
+        "log": {
+            "loglevel": "info",
+            "access": access_log_path,
+            "error": error_log_path,
+        },
         "stats": {},
         "api": {
             "tag": "api",

@@ -95,6 +95,38 @@ class ClientLinksResponse(BaseModel):
     vless_tcp: str
     vless_ws: str
     trojan: str
+    subscription_url: str
+
+
+class ClientLiveStatusResponse(BaseModel):
+    client_id: int
+    username: str
+    enabled: bool
+    revoked_reason: Optional[str] = None
+    quota_bytes: int
+    total_used_bytes: int
+    remaining_bytes: Optional[int] = None  # None when unlimited
+    expires_at: Optional[datetime] = None
+    is_online: bool
+    last_seen_at: Optional[datetime] = None
+    source_ip: Optional[str] = None
+    current_destination: Optional[str] = None
+    current_outbound: Optional[str] = None
+    current_inbound: Optional[str] = None
+    recent_sites: list[str] = []
+
+
+class ClientActivityLogResponse(BaseModel):
+    id: int
+    username: str
+    source_ip: str
+    destination: str
+    network: str
+    inbound_tag: str
+    outbound_tag: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # --- Routing ---

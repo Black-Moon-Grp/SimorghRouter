@@ -29,6 +29,9 @@ function app() {
 
     outbounds: [],
     clients: [],
+    liveUsers: [],
+    activityLogs: [],
+    logFilter: { username: '', search: '' },
     rules: [],
     geo: {
       geoip_exists: false,
@@ -68,6 +71,11 @@ function app() {
           this.loadClients();
         }
       }, 10000);
+      setInterval(() => {
+        if (this.token && this.tab === 'logs') {
+          this.loadActivity();
+        }
+      }, 5000);
     },
 
     notify(message, type = 'success') {
@@ -153,6 +161,23 @@ function app() {
 
     async loadClients() {
       try { this.clients = await (await this.api('/api/clients')).json(); } catch {}
+    },
+
+    async loadActivity() {
+      await Promise.all([this.loadLiveUsers(), this.loadActivityLogs()]);
+    },
+
+    async loadLiveUsers() {
+      try { this.liveUsers = await (await this.api('/api/clients/live-status')).json(); } catch {}
+    },
+
+    async loadActivityLogs() {
+      try {
+        const params = new URLSearchParams();
+        if (this.logFilter.username) params.set('username', this.logFilter.username);
+        if (this.logFilter.search) params.set('search', this.logFilter.search);
+        this.activityLogs = await (await this.api(`/api/clients/activity-logs?${params.toString()}`)).json();
+      } catch {}
     },
 
     async loadRules() {
@@ -266,7 +291,7 @@ function app() {
           open: true,
           clientId: id,
           username: links.username,
-          proto: 'vless_tcp',
+          proto: 'sub',
           links,
           qrUrl: '',
         };

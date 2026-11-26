@@ -98,7 +98,15 @@ function app() {
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || 'Request failed');
+        let msg = 'Request failed';
+        if (Array.isArray(err.detail)) {
+          msg = err.detail.map(e => `${(e.loc || []).slice(-1)[0] || 'field'}: ${e.msg}`).join(', ');
+        } else if (typeof err.detail === 'string') {
+          msg = err.detail;
+        } else if (err.detail) {
+          msg = JSON.stringify(err.detail);
+        }
+        throw new Error(msg);
       }
       return res;
     },
@@ -247,9 +255,14 @@ function app() {
 
     async createClient() {
       try {
+        const payload = {
+          username: (this.clientForm.username || '').trim(),
+          quota_gb: Number(this.clientForm.quota_gb) || 0,
+          expires_in_days: this.clientForm.expires_in_days ? Number(this.clientForm.expires_in_days) : null,
+        };
         await this.api('/api/clients', {
           method: 'POST',
-          body: JSON.stringify(this.clientForm),
+          body: JSON.stringify(payload),
         });
         this.clientForm.username = '';
         this.notify('Client created & synced to Xray');

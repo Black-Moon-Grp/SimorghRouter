@@ -9,6 +9,12 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
     [x-cloak] { display: none !important; }
+    table th { position: relative; user-select: none; }
+    .col-resizer {
+      position: absolute; top: 0; right: 0; width: 6px; height: 100%;
+      cursor: col-resize; user-select: none; z-index: 10;
+    }
+    .col-resizer:hover, .col-resizer.resizing { background: rgba(99, 102, 241, 0.6); }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen antialiased" x-data="app()" x-init="init()">
@@ -612,5 +618,39 @@
   </div>
 
   <script src="/static/app.js"></script>
+  <script>
+    function initResizableTables() {
+      document.querySelectorAll('table').forEach((table) => {
+        if (table.dataset.resizableInit) return;
+        table.dataset.resizableInit = '1';
+        table.style.tableLayout = 'fixed';
+        table.querySelectorAll('thead th').forEach((th) => {
+          if (th.querySelector('.col-resizer')) return;
+          const resizer = document.createElement('div');
+          resizer.className = 'col-resizer';
+          th.appendChild(resizer);
+          let startX = 0, startW = 0;
+          const onMove = (e) => {
+            const w = Math.max(60, startW + (e.clientX - startX));
+            th.style.width = w + 'px';
+          };
+          const onUp = () => {
+            resizer.classList.remove('resizing');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+          };
+          resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startW = th.offsetWidth;
+            resizer.classList.add('resizing');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+          });
+        });
+      });
+    }
+    document.addEventListener('DOMContentLoaded', () => setTimeout(initResizableTables, 300));
+  </script>
 </body>
 </html>
